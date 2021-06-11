@@ -117,9 +117,10 @@ class StreamText:
                 t_desc += "\tOther info:\n"
                 for key, value in desc_dict.items():
                     if key != 'channels':
-                        t_desc += f"\t\t{key}: {value}"
+                        t_desc += f"\t\t{key}: {value}\n"
 
             t = '\n'.join([name_line, type_line, channels_line, t_desc])
+            t += '\n'
             visible = True
         else:
             t = "Empty"
@@ -151,7 +152,7 @@ text_more_info = sg.Text("More information", key='-TXT_MORE_INFO-', enable_event
 
 # Define the GUI elements that show stream information
 stream_texts = [StreamText(i, info=None) for i in range(num_stream_elements)]
-streams_column = sg.Column([stream_text.row() for stream_text in stream_texts], scrollable=True, vertical_scroll_only=True, expand_x=True, expand_y=True)
+streams_column = sg.Column([stream_text.row() for stream_text in stream_texts], scrollable=True, expand_x=True, expand_y=True)
 
 # Define the window's contents
 layout = [[streams_column],
@@ -200,7 +201,7 @@ while True:
     elif event == sg.WINDOW_CLOSED or event == 'Quit':
         break
 
-    # streams_column.contents_changed()
+    streams_column.contents_changed()
 
 # Finish up by removing from the screen
 window.close()

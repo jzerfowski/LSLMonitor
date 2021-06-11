@@ -2,8 +2,9 @@ import threading
 import time
 import pylsl
 import PySimpleGUI as sg
-
+import xmltodict
 import xml.etree.ElementTree as ET
+import json
 
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -11,15 +12,15 @@ logger = logging.getLogger(__name__)
 
 winsize = (600, 600)
 
-lsl_format_dict = {
-1: 'cf_float32',
-2: 'cf_double64',
-3: 'cf_string',
-4: 'cf_int32',
-5: 'cf_int16',
-6: 'cf_int8',
-7: 'cf_int64',
-0: 'cf_undefined'}
+# lsl_format_dict = {
+# '1': 'cf_float32',
+# '2': 'cf_double64',
+# '3': 'cf_string',
+# '4': 'cf_int32',
+# '5': 'cf_int16',
+# '6': 'cf_int8',
+# '7': 'cf_int64',
+# '0': 'cf_undefined'}
 
 class ContinuousResolverThreaded:
     def __init__(self, resolve_time=1, callback_changed=None, forget_after=5):
@@ -91,7 +92,7 @@ class StreamWatcher:
 class StreamText:
     def __init__(self, info=None):
         self._info = info
-        self.text = sg.Text("EmptyNanana", visible=False, size=winsize)
+        self.text = sg.Text("", visible=False, size=winsize)
 
     @property
     def info(self):
@@ -99,27 +100,45 @@ class StreamText:
 
     def update_row(self):
         if self.info is not None:
-            info = self.info
-            name_line = f"{info.name()} {'('+info.source_id()+')' if len(info.source_id())>0 else ''} @{info.hostname()}"
-            type_line = f"{info.type()} @{info.nominal_srate():.2f} Hz"
-            channels_line = f"{info.channel_count()} channel{'s' if info.channel_count()>1 else ''} of format {lsl_format_dict[info.channel_format()]}"
-            misc_line = f""
-            xml_lines = f"{info.as_xml()}"
-            t = '\n'.join([name_line, type_line, channels_line])
-            desc = ET.fromstring(info.as_xml()).find('desc')
-            desc_xml = ET.tostring(desc, encoding='unicode')
-            if len(desc_xml)>10:
-                tooltip_text = ET.tostring(desc, encoding='unicode')
-                self.text.set_tooltip(tooltip_text)
+            info = xmltodict.parse(self.info.as_xml())['info']
 
-                t += '\n'+desc_xml
-            # t = f"{name_line}\n{type_line}\n{host_line}\n{channels_line}\n{xml_lines}"
+            name_line = f"{info['name']} {'('+info['source_id']+')' if len(info['source_id'])>0 else ''} @{info['hostname']}"
+            type_line = f"{info['type']} @{float(info['nominal_srate']):.2f} Hz"
+            channels_line = f"{info['channel_count']} channel{'s' if int(info['channel_count'])>1 else ''} ({info['channel_format']})"
+
+            t_desc = ""
+
+            # info_dict = xmltodict.parse(info.as_xml())['info']
+            if 'desc' in info and info['desc'] is not None:
+                desc_dict = info['desc']
+                t_desc = ""
+                if 'channels' in desc_dict:
+                    t_channels = ""
+                    t_channels = "\tChannels:\n"
+                    for channel in desc_dict['channels']['channel']:
+                        # if 'label' in channel:
+                        #     _t += f"Channel {channel['label']}\n\t"
+                        t_channels += '\t\t'
+                        t_channels += ', '.join(f"{key}: {value}" for key, value in channel.items())
+                        t_channels += '\n'
+                    t_desc += t_channels
+
+                t_desc += "\tOther info:\n"
+                for key, value in desc_dict.items():
+                    if key != 'channels':
+                        t_desc += f"\t\t{key}: {value}"
+
+                self.text.set_tooltip(t_desc)
+
+            t = '\n'.join([name_line, type_line, channels_line, t_desc])
             visible = True
         else:
             # tooltip_text = "No Tooltip Text"
             self.text.set_tooltip('')
             t = "Empty"
             visible = False
+
+
 
         t_xsize, t_ysize = max([len(l) for l in t.splitlines()]), len(t.splitlines())
         self.text.set_size(size=(t_xsize, t_ysize))
@@ -136,6 +155,7 @@ class StreamText:
 
 checkbox_auto_update = sg.Checkbox("Auto update", default=True, enable_events=True, key='toggle_auto_update')
 button_update = sg.Button("Update now", enable_events=True, key='button_update_now')
+text_count_streams_available = sg.Text("No streams found", key='text_count_streams_available')
 
 num_stream_elements = 10
 stream_texts = [StreamText(info=None) for i in range(num_stream_elements)]
@@ -144,6 +164,10 @@ streams_column = sg.Column([stream_text.row() for stream_text in stream_texts], 
 
 def update_stream_rows(results, new, deleted):
     num_available_streams = len(continuous_resolver.available_streams.values())
+
+    text_count_streams_available.update(
+        f"{num_available_streams if num_available_streams else 'No'} streams found")
+
     for i, stream_text in enumerate(stream_texts):
         if i < num_available_streams:
             stream_watcher = list(continuous_resolver.available_streams.values())[i]
@@ -153,7 +177,7 @@ def update_stream_rows(results, new, deleted):
 
 # Define the window's contents
 layout = [[streams_column],
-          [checkbox_auto_update, button_update]]
+          [checkbox_auto_update, button_update, text_count_streams_available]]
 
 # Create the window
 sg.theme('DarkAmber')   # Add a touch of color

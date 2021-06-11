@@ -3,30 +3,24 @@ import time
 import pylsl
 import PySimpleGUI as sg
 import xmltodict
-import xml.etree.ElementTree as ET
-import json
+import webbrowser
 
 import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-winsize = (600, 600)
+info_url = r"https://github.com/jzerfowski/LSLMonitor"
 
-# lsl_format_dict = {
-# '1': 'cf_float32',
-# '2': 'cf_double64',
-# '3': 'cf_string',
-# '4': 'cf_int32',
-# '5': 'cf_int16',
-# '6': 'cf_int8',
-# '7': 'cf_int64',
-# '0': 'cf_undefined'}
+winsize = (600, 600)
+num_stream_elements = 50  # This is the maximum number of streams that can be shown, due to limitations of PySimpleGUI
+
 
 class ContinuousResolverThreaded:
-    def __init__(self, resolve_time=1, callback_changed=None, forget_after=5):
-        # Don't make the update period too short as this seems to lead to
-        self.resolver = pylsl.ContinuousResolver(prop=None, value=None, pred=None, forget_after=forget_after)
-
+    """
+    Continuously try to resolve streams on the network. Unfortunately ContinuousResolver from pylsl seemed
+    to lose the streams every now and then so we replicate the behaviour by just searching for some time
+    """
+    def __init__(self, resolve_time=1, callback_changed=None):
         self.available_streams = dict()
         self.callback_changed = callback_changed
         self.resolve_time = resolve_time
@@ -39,7 +33,6 @@ class ContinuousResolverThreaded:
             self.update()
 
     def update(self):
-        # results = self.resolver.results()  # returns StreamInfo objects
         results = pylsl.resolve_streams(self.resolve_time)
 
         new = dict()
@@ -66,7 +59,7 @@ class ContinuousResolverThreaded:
                 self.callback_changed(results, new, deleted)
 
     def start(self):
-        logger.info(f"Starting Thread, looking for threads with resolve_time={self.resolve_time}s")
+        logger.info(f"Starting Thread, looking for streams with resolve_time={self.resolve_time}s")
         self.running = True
         self.thread = threading.Thread(target=self.update_loop)
         self.thread.start()
@@ -83,22 +76,23 @@ class StreamWatcher:
         self.info = self.inlet.info()
 
     def name(self):
-        # Mirror the common info interface
+        # Mirror the common info interface so we can compare against info.name() from resolved StreamInfo instances
         return self.info.name()
 
     def __str__(self):
         return self.info.__str__()
 
-class StreamText:
-    def __init__(self, info=None):
-        self._info = info
-        self.text = sg.Text("", visible=False, size=winsize)
 
-    @property
-    def info(self):
-        return self._info
+class StreamText:
+    def __init__(self, index, info=None):
+        self._info = info
+        self.text = sg.Text("", visible=False, size=winsize, key=f"-TXT_STREAMTEXT{index}")
 
     def update_row(self):
+        """
+        Automatically update stream information derived from self.info
+        :return:
+        """
         if self.info is not None:
             info = xmltodict.parse(self.info.as_xml())['info']
 
@@ -106,9 +100,8 @@ class StreamText:
             type_line = f"{info['type']} @{float(info['nominal_srate']):.2f} Hz"
             channels_line = f"{info['channel_count']} channel{'s' if int(info['channel_count'])>1 else ''} ({info['channel_format']})"
 
+            # Construct a complex string to show all information that are contained in the stream's description
             t_desc = ""
-
-            # info_dict = xmltodict.parse(info.as_xml())['info']
             if 'desc' in info and info['desc'] is not None:
                 desc_dict = info['desc']
                 t_desc = ""
@@ -116,8 +109,6 @@ class StreamText:
                     t_channels = ""
                     t_channels = "\tChannels:\n"
                     for channel in desc_dict['channels']['channel']:
-                        # if 'label' in channel:
-                        #     _t += f"Channel {channel['label']}\n\t"
                         t_channels += '\t\t'
                         t_channels += ', '.join(f"{key}: {value}" for key, value in channel.items())
                         t_channels += '\n'
@@ -128,21 +119,19 @@ class StreamText:
                     if key != 'channels':
                         t_desc += f"\t\t{key}: {value}"
 
-                self.text.set_tooltip(t_desc)
-
             t = '\n'.join([name_line, type_line, channels_line, t_desc])
             visible = True
         else:
-            # tooltip_text = "No Tooltip Text"
-            self.text.set_tooltip('')
             t = "Empty"
             visible = False
-
-
 
         t_xsize, t_ysize = max([len(l) for l in t.splitlines()]), len(t.splitlines())
         self.text.set_size(size=(t_xsize, t_ysize))
         self.text.update(t, visible=visible)
+
+    @property
+    def info(self):
+        return self._info
 
     @info.setter
     def info(self, info):
@@ -153,15 +142,28 @@ class StreamText:
     def row(self):
         return [self.text]
 
-checkbox_auto_update = sg.Checkbox("Auto update", default=True, enable_events=True, key='toggle_auto_update')
-button_update = sg.Button("Update now", enable_events=True, key='button_update_now')
-text_count_streams_available = sg.Text("No streams found", key='text_count_streams_available')
 
-num_stream_elements = 10
-stream_texts = [StreamText(info=None) for i in range(num_stream_elements)]
+# Definition of important GUI Elements
+checkbox_auto_update = sg.Checkbox("Auto update", default=True, enable_events=True, key='-CHK_UPDATE_NOW-')
+button_update = sg.Button("Update now", enable_events=True, key='-BTN_UPDATE_NOW-')
+text_count_streams_available = sg.Text("No streams found", key='-TXT_COUNT_STREAMS-')
+text_more_info = sg.Text("More information", key='-TXT_MORE_INFO-', enable_events=True, justification='right', tooltip="Opens in Browser")
+
+# Define the GUI elements that show stream information
+stream_texts = [StreamText(i, info=None) for i in range(num_stream_elements)]
 streams_column = sg.Column([stream_text.row() for stream_text in stream_texts], scrollable=True, vertical_scroll_only=True, expand_x=True, expand_y=True)
 
+# Define the window's contents
+layout = [[streams_column],
+          [checkbox_auto_update, button_update, text_count_streams_available, text_more_info]]
 
+# Create the window
+sg.theme('DarkAmber')   # Add a touch of color
+window = sg.Window('LSL Monitor', layout, size=winsize)
+window.read(timeout=100)  # Read window to initialize all GUi elements
+
+
+# Callback method for continuous_resolver
 def update_stream_rows(results, new, deleted):
     num_available_streams = len(continuous_resolver.available_streams.values())
 
@@ -175,38 +177,31 @@ def update_stream_rows(results, new, deleted):
         else:
             stream_text.info = None
 
-# Define the window's contents
-layout = [[streams_column],
-          [checkbox_auto_update, button_update, text_count_streams_available]]
 
-# Create the window
-sg.theme('DarkAmber')   # Add a touch of color
-window = sg.Window('LSL Monitor', layout, size=winsize)
-window.read(timeout=500)
-
-continuous_resolver = ContinuousResolverThreaded(forget_after=1, callback_changed=update_stream_rows)
+continuous_resolver = ContinuousResolverThreaded(callback_changed=update_stream_rows)
 if checkbox_auto_update.get:
     continuous_resolver.start()
 
 # Display and interact with the Window using an Event Loop
 while True:
     event, values = window.read(timeout=100)
-    # See if user wants to quit or window was closed
-    # print(event)
+
+    # Check what the event is
     if event == checkbox_auto_update.Key:
         auto_update = checkbox_auto_update.get()
         if auto_update:
             continuous_resolver.start()
         else:
             continuous_resolver.stop()
+    elif event == text_more_info.Key:
+        webbrowser.open(info_url)
     elif event == button_update.Key:
         continuous_resolver.update()
     elif event == sg.WINDOW_CLOSED or event == 'Quit':
         break
-    # streams_column.layout(stream_rows)
-    streams_column.contents_changed()
-    # Output a message to the window
-    # window['-OUTPUT-'].update('Hello ' + values['-INPUT-'] + "! Thanks for trying PySimpleGUI")
+
+    # streams_column.contents_changed()
 
 # Finish up by removing from the screen
 window.close()
+continuous_resolver.stop()

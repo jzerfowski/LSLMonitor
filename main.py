@@ -13,6 +13,7 @@ info_url = r"https://github.com/jzerfowski/LSLMonitor"
 
 winsize = (600, 600)
 num_stream_elements = 50  # This is the maximum number of streams that can be shown, due to limitations of PySimpleGUI
+resolve_time = 1
 
 
 class ContinuousResolverThreaded:
@@ -20,7 +21,7 @@ class ContinuousResolverThreaded:
     Continuously try to resolve streams on the network. Unfortunately ContinuousResolver from pylsl seemed
     to lose the streams every now and then so we replicate the behaviour by just searching for some time
     """
-    def __init__(self, resolve_time=1, callback_changed=None):
+    def __init__(self, resolve_time, callback_changed=None):
         self.available_streams = dict()
         self.callback_changed = callback_changed
         self.resolve_time = resolve_time
@@ -96,10 +97,10 @@ class StreamText:
         if self.info is not None:
             info = xmltodict.parse(self.info.as_xml())['info']
 
-            name_line = f"{info['name']} {'('+info['source_id']+')' if len(info['source_id'])>0 else ''} @{info['hostname']}"
+            name_line = f"{info['name']} {'('+info['source_id']+')' if len(info['source_id'])>0 else ''} {info['hostname']}{'@'+info['v4address'] if info['v4address'] is not None else ''}:{info['v4data_port']}/{info['v4service_port']}"
             type_line = f"{info['type']} @{float(info['nominal_srate']):.2f} Hz"
             channels_line = f"{info['channel_count']} channel{'s' if int(info['channel_count'])>1 else ''} ({info['channel_format']})"
-
+            more_info_line = f"Created at {float(info['created_at']):.3f}, Version {float(info['version']):.1f}"
             # Construct a complex string to show all information that are contained in the stream's description
             t_desc = ""
             if 'desc' in info and info['desc'] is not None:
@@ -119,7 +120,7 @@ class StreamText:
                     if key != 'channels':
                         t_desc += f"\t\t{key}: {value}\n"
 
-            t = '\n'.join([name_line, type_line, channels_line, t_desc])
+            t = '\n'.join([name_line, type_line, channels_line, more_info_line, t_desc])
             t += '\n'
             visible = True
         else:
@@ -179,7 +180,7 @@ def update_stream_rows(results, new, deleted):
             stream_text.info = None
 
 
-continuous_resolver = ContinuousResolverThreaded(callback_changed=update_stream_rows)
+continuous_resolver = ContinuousResolverThreaded(resolve_time=resolve_time, callback_changed=update_stream_rows)
 if checkbox_auto_update.get:
     continuous_resolver.start()
 

@@ -122,7 +122,7 @@ class StreamText:
                     if key != 'channels':
                         # Execute only once if other information is actually available:
                         if t_other == "":
-                            "\tOther info:\n"
+                            t_other += "\tOther info:\n"
                         t_other += f"\t\t{key}: {value}\n"
 
                 t_desc += t_other

@@ -1,11 +1,12 @@
+import logging
 import threading
-
-import pylsl
-import PySimpleGUI as sg
-import xmltodict
 import webbrowser
 
-import logging
+import PySimpleGUI as sg
+import xmltodict
+
+import pylsl
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ class ContinuousResolverThreaded:
     Continuously try to resolve streams on the network. Unfortunately ContinuousResolver from pylsl seemed
     to lose the streams every now and then so we replicate the behaviour by just searching for some time
     """
+
     def __init__(self, resolve_time, callback_changed=None):
         self.available_streams = dict()
         self.callback_changed = callback_changed
@@ -97,9 +99,9 @@ class StreamText:
         if self.info is not None:
             info = xmltodict.parse(self.info.as_xml())['info']
 
-            name_line = f"{info['name']} {'('+info['source_id']+')' if len(info['source_id'])>0 else ''} {info['hostname']}{'@'+info['v4address'] if info['v4address'] is not None else ''}:{info['v4data_port']}/{info['v4service_port']}"
+            name_line = f"{info['name']} {'(' + info['source_id'] + ')' if len(info['source_id']) > 0 else ''} {info['hostname']}{'@' + info['v4address'] if info['v4address'] is not None else ''}:{info['v4data_port']}/{info['v4service_port']}"
             type_line = f"{info['type']} @{float(info['nominal_srate']):.2f} Hz"
-            channels_line = f"{info['channel_count']} channel{'s' if int(info['channel_count'])>1 else ''} ({info['channel_format']})"
+            channels_line = f"{info['channel_count']} channel{'s' if int(info['channel_count']) > 1 else ''} ({info['channel_format']})"
             more_info_line = f"Created at {float(info['created_at']):.3f}, Version {float(info['version']):.1f}"
             # Construct a complex string to show all information that are contained in the stream's description
             t_desc = ""
@@ -149,19 +151,22 @@ class StreamText:
 checkbox_auto_update = sg.Checkbox("Auto update", default=True, enable_events=True, key='-CHK_UPDATE_NOW-')
 button_update = sg.Button("Update now", enable_events=True, key='-BTN_UPDATE_NOW-')
 text_count_streams_available = sg.Text("No streams found", key='-TXT_COUNT_STREAMS-')
-text_more_info = sg.Text("More information", key='-TXT_MORE_INFO-', enable_events=True, justification='right', tooltip="Opens in Browser")
+text_more_info = sg.Text("More information", key='-TXT_MORE_INFO-', enable_events=True, justification='right',
+                         tooltip="Opens in Browser")
 
 # Define the GUI elements that show stream information
 stream_texts = [StreamText(i, info=None) for i in range(num_stream_elements)]
-streams_column = sg.Column([stream_text.row() for stream_text in stream_texts], scrollable=True, expand_x=True, expand_y=True)
+streams_column = sg.Column([stream_text.row() for stream_text in stream_texts], scrollable=True, expand_x=True,
+                           expand_y=True)
 
 # Define the window's contents
 layout = [[streams_column],
           [checkbox_auto_update, button_update, text_count_streams_available, text_more_info]]
 
 # Create the window
-sg.theme('DarkAmber')   # Add a touch of color
-window = sg.Window('LSL Monitor', layout, size=winsize)
+sg.theme('DarkAmber')  # Add a touch of color
+window_icon_base64 = b'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAD7AAAA+wFieMcIAAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAAAdxJREFUWIXt1r9rFEEUB/DP6UnEpAkmUfBHIwhiYSEIgoVFCgsb7W0sg9qI+AdoJyKIFioWWghax0KEVIKF4i8EQYMgBiFiPD1QRCOxmE242+xedufIbuMXhoU3733fd2fezBtqRgMHcBVDFeduYwJeYqGm8aKJjYminfiyav/bjRG8xUizw/gNrYoELOVdU1HCXNQuoJljH8cHvMuZ34RDGMMsXuNZB+cRPBS2dUXMCBU52mF7glM5/kfxHZO4hvv4gcvJ/FDCt6dHztHEZyZvBfLQwHWcSb6LGMa+klwoXwMDSbLZlL2FBzECyq7AL9zDLdwRtuqpUAMLMQJiTsExYQu24xxeCZfK/qoEzOMGDmMrdmA6sa26gAGsS9ne47buU1QYvWpgG/ambG2hBi7gMT5iN07jbsp3V4r/J95kJcq6B6bwNWNsxiXhr+eTuE84L6wODObETnXwL90DeQKKYC02lIxZJqCfXvBXWNa+UHsz+i+giTlsweca8s81cBA3hSZTFHm+ZZ50LRwv4d+F35a/cP/EEMXWQFZcFFdM0KBwCWVxra9CwNkecyfLkjUK+EwIhTosXKG93nrwXDhZbTwSekdfWOwVMWN6JfIiT7KLOBEhHK5ExlWHfztEkAY+nHB8AAAAAElFTkSuQmCC'
+window = sg.Window('LSL Monitor', layout, size=winsize, icon=window_icon_base64)
 window.read(timeout=100)  # Read window to initialize all GUi elements
 
 

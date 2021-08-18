@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 info_url = r"https://github.com/jzerfowski/LSLMonitor"
 
-winsize = (600, 600)
+winsize = (900, 700)
 num_stream_elements = 50  # This is the maximum number of streams that can be shown, due to limitations of PySimpleGUI
 resolve_time = 1
 
@@ -108,7 +108,7 @@ class StreamText:
             if 'desc' in info and info['desc'] is not None:
                 desc_dict = info['desc']
                 t_desc = ""
-                if 'channels' in desc_dict:
+                if 'channels' in desc_dict and desc_dict['channels'] is not None:
                     t_channels = ""
                     t_channels = "\tChannels:\n"
                     for channel in desc_dict['channels']['channel']:
@@ -117,10 +117,15 @@ class StreamText:
                         t_channels += '\n'
                     t_desc += t_channels
 
-                t_desc += "\tOther info:\n"
+                t_other = ""
                 for key, value in desc_dict.items():
                     if key != 'channels':
-                        t_desc += f"\t\t{key}: {value}\n"
+                        # Execute only once if other information is actually available:
+                        if t_other == "":
+                            "\tOther info:\n"
+                        t_other += f"\t\t{key}: {value}\n"
+
+                t_desc += t_other
 
             t = '\n'.join([name_line, type_line, channels_line, more_info_line, t_desc])
             t += '\n'
